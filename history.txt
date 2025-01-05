@@ -17,4 +17,4 @@ final_result.pkl에서 내용 확인.
 
 - Q1. embedding model에 사용되는 지정 모델이 존재하는가?
 
--
+- 데이터 insert 중 1836 번째? 1816 번째 키 밸류가 입력하는데 maxlength 넘는 오류 발생.
