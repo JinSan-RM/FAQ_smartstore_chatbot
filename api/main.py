@@ -21,6 +21,6 @@ def insert_faq():
     faq_data = '/app/api/utils/preprocess_final_data.pkl'
     data_handle= DataHandle()
     
-    # df = pd.read_pickle(faq_data)
-    # data_handle.insert_FAQ(df)
+    df = pd.read_pickle(faq_data)
+    data_handle.insert_FAQ(df)
     return "sucess"

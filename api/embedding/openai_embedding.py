@@ -14,17 +14,17 @@ class DataHandle:
         
         connections.connect(host='milvus', port='19530') 
         
-        if utility.has_collection("faq"):
-            collection = Collection("faq")
-            collection.drop()
-            print("Existing collection dropped.")
+        # if utility.has_collection("faq"):
+        #     collection = Collection("faq")
+        #     collection.drop()
+        #     print("Existing collection dropped.")
             
         self.dim = 1536
         
         self.fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="question", dtype=DataType.VARCHAR, max_length=512),
-            FieldSchema(name="answer", dtype=DataType.VARCHAR, max_length=4000),
+            FieldSchema(name="answer", dtype=DataType.VARCHAR, max_length=16384),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.dim)
         ]
         
@@ -46,6 +46,13 @@ class DataHandle:
         self.collection.load()
         
         self.print_collection_info()
+        self.print_field_max_length()
+        
+    def print_field_max_length(self):
+        # 필드의 max_length 출력
+        for field in self.collection.schema.fields:
+            if field.name == "answer":
+                print(f"Field 'answer' max_length: {field.max_length}")
     
     def print_collection_info(self):
 
@@ -75,29 +82,49 @@ class DataHandle:
         return response.data[0].embedding
     
     def insert_FAQ(self, faq_data):
-        questions = []
-        answers = []
-        embeddings = []
+        MAX_LENGTH = 16384  # Milvus의 최대 문자열 길이 제한
+
         cnt = 0
         for question, answer in faq_data.items():
-            print(f"Processing FAQ {cnt}: Question='{question}', Answer='{answer}'")
-            questions.append(question)
-            answers.append(answer)
-            embeddings.append(self.text_embedding(question=question))
-            cnt += 1
+            try:
+                print(f"Processing FAQ {cnt}: Question='{question[:50]}...', Answer length={len(answer)}")
+
+                # Answer 길이 검사
+                if len(answer) > MAX_LENGTH:
+                    print(f"Error: Answer for FAQ {cnt} exceeds MAX_LENGTH: {len(answer)} characters. Skipping this entry.")
+                    cnt += 1
+                    continue
+
+                # 문자열 전처리
+                import re
+                answer = answer[:MAX_LENGTH]
+                answer = re.sub(r'[\r\n\t]', ' ', answer).strip()
+
+                # 질문, 답변, 임베딩 준비
+                embedding = self.text_embedding(question=question)
+
+                # 데이터 삽입
+                field_data = [
+                    [question],
+                    [answer],
+                    [embedding]
+                ]
+                print(f"Inserting FAQ {cnt} into Milvus...")
+                self.collection.insert(field_data)  # Milvus에 개별 삽입
+                print(f"FAQ {cnt} inserted successfully.")
+            except Exception as e:
+                # 특정 데이터 삽입 중 오류 발생 시 로그 출력
+                print(f"Error inserting FAQ {cnt}: {e}. Skipping this entry.")
+            finally:
+                cnt += 1
+
+        try:
+            print("Flushing data into Milvus...")
+            self.collection.flush()  # 전체 데이터 플러시
+            print(f"Data flushed successfully. Total entities in collection: {self.collection.num_entities}")
+        except Exception as e:
+            print(f"Error during data flush: {e}")
             
-        
-        field_data = [
-            questions,
-            answers,
-            embeddings
-        ]
-        print("Inserting data into Milvus...")
-    
-        self.collection.insert(field_data)
-        self.collection.flush()
-        print(f"Data inserted. Total entities in collection: {self.collection.num_entities}")
-        
     def search_similar_question(self, user_question: str, top_k: int = 1):
         user_embedding = self.text_embedding(user_question)
         
