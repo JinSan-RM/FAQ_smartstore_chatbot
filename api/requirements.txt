@@ -1,0 +1,9 @@
+torch
+fastapi
+uvicorn
+pydantic
+requests
+pymilvus
+openai
+
+
