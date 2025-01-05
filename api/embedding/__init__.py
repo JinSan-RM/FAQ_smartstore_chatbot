@@ -1,1 +1,1 @@
-from embedding.openai_embedding import DataHandle
+from .openai_embedding import DataHandle
