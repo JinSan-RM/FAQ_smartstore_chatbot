@@ -121,17 +121,15 @@ class DBHandling():
             limit=5  
         )
         print("Stored data samples:", res)
-        
     def search_FAQ(self, query, limit=5):
-
         results = self.collection.search(
             data=[self.text_embedding(query)],
             anns_field="embedding",
             param={"metric_type": "COSINE", "params": {"nprobe": 10}}, 
             limit=limit,
             expr=None,
+            output_fields=["question", "answer"]  # 필요한 필드 추가
         )
-        
 
         grouped_results = {}
         for hit in results[0]:
@@ -160,5 +158,49 @@ class DBHandling():
                 'answer': merged_answer
             })
         
-        return final_results
+        # 가장 관련성이 높은 하나의 결과만 반환
+        if final_results:
+            return final_results[0]
+        else:
+            return {"question": "해당 질문에 대한 답변을 찾을 수 없습니다.", "answer": ""}    
+    # def search_FAQ(self, query, limit=5):
+    #     import re  # re 모듈이 필요합니다.
+
+    #     results = self.collection.search(
+    #         data=[self.text_embedding(query)],
+    #         anns_field="embedding",
+    #         param={"metric_type": "COSINE", "params": {"nprobe": 10}}, 
+    #         limit=limit,
+    #         expr=None,
+    #         output_fields=["question", "answer"]  # 추가된 부분
+    #     )
+
+    #     grouped_results = {}
+    #     for hit in results[0]:
+    #         question = hit.entity.get('question')
+    #         answer = hit.entity.get('answer')
+            
+    #         if question:
+    #             base_question = question.split(' (파트')[0]
+                
+    #             if base_question not in grouped_results:
+    #                 grouped_results[base_question] = []
+    #             grouped_results[base_question].append((question, answer))
+    #         else:
+    #             print("질문에 답이 없음")
+        
+    #     final_results = []
+    #     for question, parts in grouped_results.items():
+    #         sorted_parts = sorted(
+    #             parts,
+    #             key=lambda x: int(re.search(r'\(파트 (\d+)\)', x[0]).group(1)) if re.search(r'\(파트 (\d+)\)', x[0]) else 0
+    #         )
+            
+    #         merged_answer = ' '.join(part[1] for part in sorted_parts)
+    #         final_results.append({
+    #             'question': question,
+    #             'answer': merged_answer
+    #         })
+        
+    #     return final_results
     
