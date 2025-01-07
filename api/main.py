@@ -1,8 +1,11 @@
 from embedding.openai_embedding import DataHandle
-from milvus.FAQ_search import DBHandling
+from milvus.FAQ_RAG import DBHandling
+from openai import OpenAI
 
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse, JSONResponse
 import pandas as pd
+import json
 
 app = FastAPI()
 
@@ -28,10 +31,32 @@ def insert_faq():
     return "sucess"
 
 @app.post('/openai_faq_search')
-def search_faq(query: str):
-    db_handle = DBHandling()
-    result = db_handle.search_FAQ(query=query)
-    print(f"RAG result : {result}")
-    
-    db_handle.check_stored_data()
-    return result
+async def search_faq(query: str):
+    try:
+        db_handle = DBHandling()
+
+        retrieved_context = db_handle.search_FAQ(query=query)
+
+        if not retrieved_context or not retrieved_context.get('answer'):
+            return StreamingResponse(
+                db_handle.generate_error_response("저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다."),
+                media_type='text/event-stream'
+            )
+
+        print(f"retrieved_context : {retrieved_context}")
+        async def generate():
+            try:
+                async for content in db_handle.generate_response(query, retrieved_context):
+                    yield f"data: {json.dumps({'content': content})}\n\n"
+                yield f"data: [DONE]\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return StreamingResponse(generate(), media_type='text/event-stream')
+
+    except Exception as e:
+        print(f"Error in search_faq: {str(e)}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )

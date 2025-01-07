@@ -1,6 +1,6 @@
 from openai import OpenAI
 from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
-import os, re
+import os, re, json
 
 
 OPENAI_KEY = os.environ['OPENAI_API_KEY']
@@ -60,40 +60,91 @@ class DBHandling():
                 })
         
         return contexts
-
-
-    def generate_response(self, query, chat_history=None):
-
-        relevant_contexts = self.get_relevant_context(query)
+    async def generate_response(self, query: str, retrieved_context: dict):
+        prompt = f"""다음은 네이버 스마트스토어 FAQ 내용입니다:
+        질문: {retrieved_context['question']}
+        답변: {retrieved_context['answer']}
         
+        사용자 질문: {query}
+        
+        위 FAQ 내용을 참고하여 사용자의 질문에 답변해주세요. 
+        답변은 자연스러운 대화체로 작성하되, FAQ의 정확한 정보만 포함해야 합니다."""
 
-        system_prompt = """스마트스토어 FAQ 챗봇으로서 답변해주세요. 
-        제공된 FAQ 컨텍스트를 기반으로 답변하되, 스마트스토어와 관련 없는 질문에는 
-        "저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다."라고 답변하세요."""
-        
-        context_str = "\n\n".join([
-            f"Q: {ctx['question']}\nA: {ctx['answer']}" 
-            for ctx in relevant_contexts
-        ])
-        
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "system", "content": f"FAQ 컨텍스트:\n{context_str}"}
-        ]
-        
-        if chat_history:
-            messages.extend(chat_history)
+        try:
+            # OpenAI API 호출
+            response = await client.chat.completions.acreate(
+                model="gpt-4",  # 모델명
+                messages=[
+                    {"role": "system", "content": "당신은 네이버 스마트스토어 고객상담 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                stream=True  # 스트림 모드 활성화
+            )
+
+            # 스트리밍 응답 처리
+            async for chunk in response:  # response는 비동기 이터레이터여야 함
+                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                if content:
+                    yield content
+
+        except Exception as e:
+            # 에러 처리
+            yield f"Error: {str(e)}"
             
-        messages.append({"role": "user", "content": query})
+    async def generate_error_response(error_message: str):
+        yield f"data: {json.dumps({'error': error_message})}\n\n"
+        yield "data: [DONE]\n\n"
         
-        response = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            temperature=0.7,
-            stream=True 
-        )
+    async def generate_streaming_response(self, response):
+        collected_chunks = []
+        collected_messages = []
         
-        return response
+        try:
+            async for chunk in response:
+                chunk_message = chunk.choices[0].delta.content
+                if chunk_message is not None:
+                    collected_chunks.append(chunk_message)
+                    full_reply_content = ''.join(collected_chunks)
+                    collected_messages.append(full_reply_content)
+                    yield f"data: {json.dumps({'content': chunk_message})}\n\n"
+                    
+        except Exception as e:
+            print(f"Error in generate_streaming_response: {str(e)}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            yield f"data: [DONE]\n\n"
+    # def generate_response(self, query, chat_history=None):
+
+    #     relevant_contexts = self.get_relevant_context(query)
+        
+
+    #     system_prompt = """스마트스토어 FAQ 챗봇으로서 답변해주세요. 
+    #     제공된 FAQ 컨텍스트를 기반으로 답변하되, 스마트스토어와 관련 없는 질문에는 
+    #     "저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다."라고 답변하세요."""
+        
+    #     context_str = "\n\n".join([
+    #         f"Q: {ctx['question']}\nA: {ctx['answer']}" 
+    #         for ctx in relevant_contexts
+    #     ])
+        
+    #     messages = [
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "system", "content": f"FAQ 컨텍스트:\n{context_str}"}
+    #     ]
+        
+    #     if chat_history:
+    #         messages.extend(chat_history)
+            
+    #     messages.append({"role": "user", "content": query})
+        
+    #     response = self.client.chat.completions.create(
+    #         model="gpt-4",
+    #         messages=messages,
+    #         temperature=0.7,
+    #         stream=True 
+    #     )
+        
+    #     return response
 
     def generate_follow_up_questions(self, query, answer):
         prompt = f"""사용자의 질문과 답변을 바탕으로, 
@@ -121,6 +172,7 @@ class DBHandling():
             limit=5  
         )
         print("Stored data samples:", res)
+        
     def search_FAQ(self, query, limit=5):
         results = self.collection.search(
             data=[self.text_embedding(query)],
@@ -128,7 +180,7 @@ class DBHandling():
             param={"metric_type": "COSINE", "params": {"nprobe": 10}}, 
             limit=limit,
             expr=None,
-            output_fields=["question", "answer"]  # 필요한 필드 추가
+            output_fields=["question", "answer"] 
         )
 
         grouped_results = {}
@@ -158,7 +210,6 @@ class DBHandling():
                 'answer': merged_answer
             })
         
-        # 가장 관련성이 높은 하나의 결과만 반환
         if final_results:
             return final_results[0]
         else:
@@ -203,4 +254,7 @@ class DBHandling():
     #         })
         
     #     return final_results
+import asyncio
+
+
     

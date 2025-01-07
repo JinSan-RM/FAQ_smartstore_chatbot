@@ -1,1 +1,1 @@
-from .FAQ_search import DBHandling
+from .FAQ_RAG import DBHandling
