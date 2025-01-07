@@ -1,7 +1,7 @@
 from openai import OpenAI
 from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
 import os, re, json
-
+import asyncio
 
 OPENAI_KEY = os.environ['OPENAI_API_KEY']
 
@@ -23,7 +23,7 @@ class DBHandling():
             input=question,
             model="text-embedding-3-small"
         )
-        print(f"생성된 임베딩: {response.data[0].embedding}")
+        # print(f"생성된 임베딩: {response.data[0].embedding}")
         return response.data[0].embedding
     
     def create_embedding(self, text):
@@ -60,7 +60,8 @@ class DBHandling():
                 })
         
         return contexts
-    async def generate_response(self, query: str, retrieved_context: dict):
+    def generate_response(self, query: str, retrieved_context: dict):
+        print(f"generate_response 시작")
         prompt = f"""다음은 네이버 스마트스토어 FAQ 내용입니다:
         질문: {retrieved_context['question']}
         답변: {retrieved_context['answer']}
@@ -71,48 +72,31 @@ class DBHandling():
         답변은 자연스러운 대화체로 작성하되, FAQ의 정확한 정보만 포함해야 합니다."""
 
         try:
+            print(f"여기까지는 실행")
             # OpenAI API 호출
-            response = await client.chat.completions.acreate(
-                model="gpt-4",  # 모델명
+            response = client.chat.completions.create(
+                model="gpt-4o",  # 모델명
                 messages=[
                     {"role": "system", "content": "당신은 네이버 스마트스토어 고객상담 전문가입니다."},
                     {"role": "user", "content": prompt}
                 ],
-                stream=True  # 스트림 모드 활성화
+                stream=True 
             )
-
-            # 스트리밍 응답 처리
-            async for chunk in response:  # response는 비동기 이터레이터여야 함
-                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+            print("response는 끝.")
+            
+            for chunk in response:
+                content = chunk.choices[0].delta.content
                 if content:
                     yield content
 
         except Exception as e:
-            # 에러 처리
+            print(f"Error in generate_response: {str(e)}")
             yield f"Error: {str(e)}"
             
     async def generate_error_response(error_message: str):
         yield f"data: {json.dumps({'error': error_message})}\n\n"
         yield "data: [DONE]\n\n"
         
-    async def generate_streaming_response(self, response):
-        collected_chunks = []
-        collected_messages = []
-        
-        try:
-            async for chunk in response:
-                chunk_message = chunk.choices[0].delta.content
-                if chunk_message is not None:
-                    collected_chunks.append(chunk_message)
-                    full_reply_content = ''.join(collected_chunks)
-                    collected_messages.append(full_reply_content)
-                    yield f"data: {json.dumps({'content': chunk_message})}\n\n"
-                    
-        except Exception as e:
-            print(f"Error in generate_streaming_response: {str(e)}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        finally:
-            yield f"data: [DONE]\n\n"
     # def generate_response(self, query, chat_history=None):
 
     #     relevant_contexts = self.get_relevant_context(query)
@@ -213,7 +197,8 @@ class DBHandling():
         if final_results:
             return final_results[0]
         else:
-            return {"question": "해당 질문에 대한 답변을 찾을 수 없습니다.", "answer": ""}    
+            return {"question": "해당 질문에 대한 답변을 찾을 수 없습니다.", "answer": ""}
+            
     # def search_FAQ(self, query, limit=5):
     #     import re  # re 모듈이 필요합니다.
 
@@ -254,7 +239,7 @@ class DBHandling():
     #         })
         
     #     return final_results
-import asyncio
+
 
 
     
