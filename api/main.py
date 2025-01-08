@@ -57,10 +57,10 @@ async def search_faq(query: str):
                 final_text = ''.join(text_buffer)
 
                 yield f"data: {json.dumps({'final:':final_text})}\n\n"
-                print(f"content : {content} \n final_text : {final_text}", flush=True)
                 yield "data: [DONE]\n\n"
-
-                return
+                result = f"""유저 : {query}\n챗봇 : {final_text}"""
+                print(result)
+                return result
 
             # 2) 정상 FAQ라면 generate_response 호출
             for content in db_handle.generate_response(query=query, retrieved_context=retrieved_context):
@@ -74,7 +74,8 @@ async def search_faq(query: str):
             yield f"data: {json.dumps({'final': final_text})}\n\n"
             yield "data: [DONE]\n\n"
             print("generate normal 함수 종료")
-            result = f"유저 : {query}\n 챗봇 : {final_text}"
+            result = f"""유저 : {query}\n챗봇 : {final_text}"""
+            print(result)
             return result
 
         print("StreamingResponse 반환 직전")

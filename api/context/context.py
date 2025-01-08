@@ -2,7 +2,6 @@ from collections import defaultdict
 
 class ChatContext:
     def __init__(self):
-        # 사용자별 대화 기록을 저장
         self.history = defaultdict(list)
     
     def add_message(self, user_id, role, content):
