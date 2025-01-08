@@ -25,7 +25,7 @@ class DataHandle:
         self.fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="question", dtype=DataType.VARCHAR, max_length=512),
-            FieldSchema(name="answer", dtype=DataType.VARCHAR, max_length=16384),
+            FieldSchema(name="answer", dtype=DataType.VARCHAR, max_length=60535),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.dim)
         ]
         
@@ -77,7 +77,7 @@ class DataHandle:
             input=question,
             model="text-embedding-3-small"
         )
-        print(f"임베딩 생성: {response.data[0].embedding}")
+        # print(f"임베딩 생성: {response.data[0].embedding}")
         return response.data[0].embedding
 
     
@@ -118,7 +118,7 @@ class DataHandle:
 
     
     def insert_FAQ(self, faq_data):
-        MAX_LENGTH = 12000
+        MAX_LENGTH = 60000
         processed_data = []
         
         for question, answer in faq_data.items():

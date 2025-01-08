@@ -28,7 +28,6 @@ class DBHandling():
 
 
     def generate_response(self, query: str, retrieved_context: dict, user_history):
-        print(f"generate_response 시작")
         
         # retrieved_context['question']가 "저는 스마트 스토어 FAQ를..." 등의 문구일 수도 있으니,
         # 실제 FAQ인지 확인이 필요. 여기서는 그대로 사용한다고 가정.
@@ -37,8 +36,6 @@ class DBHandling():
             # 사용자의 이전 질문과 답변을 기반으로 더 적합한 답변을 생성하기 위해
             last_user_question = user_history[-2]["content"] if len(user_history) >= 2 else ""
             last_assistant_answer = user_history[-1]["content"] if len(user_history) >= 1 else ""
-            print(f"이전 질문: {last_user_question}")
-            print(f"이전 답변: {last_assistant_answer}")
             
             # 이전 대화 내용을 바탕으로 적절한 맥락을 추가할 수 있음
             prompt = f"""
@@ -114,7 +111,6 @@ class DBHandling():
                 ],
                 stream=True
             )
-            print("response는 끝.")
             
             # SSE로 스트리밍 (yield)
             for chunk in response:
