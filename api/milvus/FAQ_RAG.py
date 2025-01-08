@@ -25,64 +25,57 @@ class DBHandling():
         )
         # print(f"생성된 임베딩: {response.data[0].embedding}")
         return response.data[0].embedding
-    
-    def create_embedding(self, text):
-            response = self.client.embeddings.create(
-                input=text,
-                model="text-embedding-ada-002"
-            )
-            return response.data[0].embedding
 
-    def get_relevant_context(self, query, top_k=3):
-        query_embedding = self.create_embedding(query)
-        search_params = {
-            "metric_type": "COSINE",
-            "params": {"nprobe": 16}
-        }
-        
-        results = self.collection.search(
-            data=[query_embedding],
-            anns_field="embedding",
-            param=search_params,
-            limit=top_k,
-            output_fields=["question", "answer"]
-        )
-        
-        contexts = []
-        for hits in results:
-            print(f"Found {len(hits)} hits")
-            for hit in hits:
-                print(f"Score: {hit.score}, Question: {hit.entity.get('question')}")
-                contexts.append({
-                    "question": hit.entity.get('question'),
-                    "answer": hit.entity.get('answer'),
-                    "score": hit.score
-                })
-        
-        return contexts
-    def generate_response(self, query: str, retrieved_context: dict):
+
+    def generate_response(self, query: str, retrieved_context: dict, user_history):
         print(f"generate_response 시작")
         
         # retrieved_context['question']가 "저는 스마트 스토어 FAQ를..." 등의 문구일 수도 있으니,
         # 실제 FAQ인지 확인이 필요. 여기서는 그대로 사용한다고 가정.
 
-        prompt = f"""
-        다음은 네이버 스마트스토어 FAQ 내용입니다:
-        질문: {retrieved_context['question']}
-        답변: {retrieved_context['answer']}
+        if user_history and user_history[-2]['content'] != query:
+            # 사용자의 이전 질문과 답변을 기반으로 더 적합한 답변을 생성하기 위해
+            last_user_question = user_history[-2]["content"] if len(user_history) >= 2 else ""
+            last_assistant_answer = user_history[-1]["content"] if len(user_history) >= 1 else ""
+            print(f"이전 질문: {last_user_question}")
+            print(f"이전 답변: {last_assistant_answer}")
+            
+            # 이전 대화 내용을 바탕으로 적절한 맥락을 추가할 수 있음
+            prompt = f"""
+            다음은 네이버 스마트스토어 FAQ 내용입니다:
+            질문: {retrieved_context['question']}
+            답변: {retrieved_context['answer']}
 
-        사용자 질문: {query}
+            이전 질문: {last_user_question}
+            이전 답변: {last_assistant_answer}
 
-        위 FAQ 내용을 참고하여 사용자의 질문에 답변해주세요.
-        FAQ의 정확한 정보만 포함해야 합니다.
-        이 정보를 활용하여:
+            현재 사용자 질문: {query}
 
-        1) 사용자 질문에 FAQ 내용을 충실히 반영한 답변을 작성해 주세요.
-        2) 답변이 끝난 후, 스마트스토어 관련해서 추가로 궁금해할 만한 1~2개 질문을 꼭 포함해 주세요.
-        """
+            위 FAQ 내용을 참고하여 사용자의 질문에 답변해주세요.
+            FAQ의 정확한 정보만 포함해야 합니다.
+            이 정보를 활용하여:
+
+            1) 사용자 질문에 FAQ 내용을 충실히 반영한 답변을 작성해 주세요.
+            2) 답변이 끝난 후, 스마트스토어 관련해서 추가로 궁금해할 만한 1~2개 질문을 꼭 포함해 주세요.
+            """
+        else:
+            prompt = f"""
+            다음은 네이버 스마트스토어 FAQ 내용입니다:
+            질문: {retrieved_context['question']}
+            답변: {retrieved_context['answer']}
+
+            사용자 질문: {query}
+
+            위 FAQ 내용을 참고하여 사용자의 질문에 답변해주세요.
+            FAQ의 정확한 정보만 포함해야 합니다.
+            이 정보를 활용하여:
+
+            1) 사용자 질문에 FAQ 내용을 충실히 반영한 답변을 작성해 주세요.
+            2) 답변이 끝난 후, 스마트스토어 관련해서 추가로 궁금해할 만한 1~2개 질문을 꼭 포함해 주세요.
+            """
 
         try:
-            print(f"여기까지는 실행")
+            print(f"prompt : {prompt}", flush=True)
 
             # OpenAI API 호출
             response = client.chat.completions.create(
@@ -133,9 +126,9 @@ class DBHandling():
             print(f"Error in generate_response: {str(e)}")
             yield f"Error: {str(e)}"
             
-    def generate_error_response(self, question: str, content: str):
+    def generate_error_response(self, question: str, content: str, user_history):
     
-        # 저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다.
+        # 저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다. RAG 단계에서 데이터를 생성.
         # 대답은 굳이 생성 안해도 되는 비용 절감의 가능성이 있음.
 
         system_prompt = """
@@ -153,7 +146,7 @@ class DBHandling():
         {content}
         
         
-        스마트스토어 후속 안내를 작성해 주세요.
+        질문을 토대로 스마트스토어 후속 안내를 작성해 주세요.
         """
 
         try:
@@ -162,7 +155,17 @@ class DBHandling():
                 model="gpt-4o",  # 모델명
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant",  "content": (
+                            "아래 형식을 지켜 주세요.\n\n"
+                            """
+                            '저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다.'\n"
+                            ' - 질문을 토대로 스마트스토어 후속 안내(1~2개)\n'"""
+                            " 질문을 토대로 스마트스토어 후속 안내 '-' 로만 시작해주세요."
+                            " 질문을 토대로 스마트스토어 후속 안내에는 '-'를 제외하고는 다른 어떤 첨언이나 형식도 붙이지 마세요."
+                            
+                        )
+                    }
                 ],
             stream=True
             )
@@ -175,60 +178,6 @@ class DBHandling():
             # LLM 호출 중 에러 발생 시, 원래 error_message를 보여주고 종료
             return  f"data: [DONE]\n\n"
                 
-            # def generate_response(self, query, chat_history=None):
-
-    #     relevant_contexts = self.get_relevant_context(query)
-        
-
-    #     system_prompt = """스마트스토어 FAQ 챗봇으로서 답변해주세요. 
-    #     제공된 FAQ 컨텍스트를 기반으로 답변하되, 스마트스토어와 관련 없는 질문에는 
-    #     "저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다."라고 답변하세요."""
-        
-    #     context_str = "\n\n".join([
-    #         f"Q: {ctx['question']}\nA: {ctx['answer']}" 
-    #         for ctx in relevant_contexts
-    #     ])
-        
-    #     messages = [
-    #         {"role": "system", "content": system_prompt},
-    #         {"role": "system", "content": f"FAQ 컨텍스트:\n{context_str}"}
-    #     ]
-        
-    #     if chat_history:
-    #         messages.extend(chat_history)
-            
-    #     messages.append({"role": "user", "content": query})
-        
-    #     response = self.client.chat.completions.create(
-    #         model="gpt-4",
-    #         messages=messages,
-    #         temperature=0.7,
-    #         stream=True 
-    #     )
-        
-    #     return response
-
-    def generate_follow_up_questions(self, query, answer):
-        prompt = f"""사용자의 질문과 답변을 바탕으로, 
-        사용자가 추가로 궁금해할 만한 스마트스토어 관련 질문을 1-2개 생성해주세요.
-        
-        사용자 질문: {query}
-        답변: {answer}
-        """
-        
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "스마트스토어 관련 후속 질문을 생성하는 어시스턴트입니다."},
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content" : """사용자의 질문에 답변한 뒤, 스마트스토어와 관련하여 사용자가 추가로 궁금해할 만한 2가지 사항을 아래 형식으로 제안해 주세요.
-                                                - 추가 정보 안내 필요 여부
-                                                - 다른 연관된 질문"""}
-            ],
-            temperature=0.7
-        )
-        
-        return response.choices[0].message.content
     
     def check_stored_data(self):
         res = self.collection.query(
@@ -238,7 +187,7 @@ class DBHandling():
         )
         print("Stored data samples:", res)
         
-    def search_FAQ(self, query, limit=5, threshold=0.6):
+    def search_FAQ(self, query, limit=5, threshold=0.5):
         results = self.collection.search(
             data=[self.text_embedding(query)],
             anns_field="embedding",

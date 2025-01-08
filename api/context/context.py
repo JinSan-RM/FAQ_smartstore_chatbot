@@ -1,15 +1,12 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 
 class ChatContext:
-    def __init__(self):
-        self.history = defaultdict(list)
     
+    def __init__(self, history_store):
+        self.history_store = history_store
     def add_message(self, user_id, role, content):
-        self.history[user_id].append({"role": role, "content": content})
+        self.history_store[user_id].append({"role": role, "content": content})
     
-    def get_history(self, user_id):
-        return self.history[user_id]
+    def get_user_history(self, user_id):
+        return list(self.history_store[user_id])
     
-    def clear_history(self, user_id):
-        self.history[user_id] = []
-        

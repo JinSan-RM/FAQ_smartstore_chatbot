@@ -1,21 +1,25 @@
 from embedding.openai_embedding import DataHandle
 from milvus.FAQ_RAG import DBHandling
-from openai import OpenAI
+from context.context import ChatContext
+#==============================================
 
+from openai import OpenAI
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import pandas as pd
 import json
+from collections import defaultdict, deque
 
 app = FastAPI()
 
-@app.post('/openai_embedding')
-def vector_embedding_FAQ(path : str):
-    
-    return path
+# 전역변수로 사용자별 히스토리 저장, 느림
+# 앱 새로 시작하면 초기화.
+# 10개 까지만 저장.
+history_store = defaultdict(lambda: deque(maxlen=10))
 
 @app.post('/openai_faq_test')
-def test_faq(question: str):
+def test_RAG_faq(question: str):
     data_handle = DataHandle()
     answer = data_handle.search_similar_question(question)
     return {"question": question, "answer": answer}
@@ -29,28 +33,35 @@ def insert_faq():
     df = pd.read_pickle(faq_data)
     data_handle.insert_FAQ(df)
     return "sucess"
-
-import sys
+class FAQRequest(BaseModel):
+    query: str
+    user_id: str
+    
+history_store = defaultdict(lambda: deque(maxlen=10))
 
 @app.post('/openai_faq_search')
-async def search_faq(query: str):
+async def search_faq(request: FAQRequest):
+    print(f"Request received: {request}")
     try:
+        history = ChatContext(history_store)
+        print(f"history_store : {history_store['test']}")
+        user_history = history.get_user_history(request.user_id)
+        history.add_message(request.user_id, "user", request.query)
         print("search_faq 시작")
         db_handle = DBHandling()
-        retrieved_context = db_handle.search_FAQ(query=query)
+        retrieved_context = db_handle.search_FAQ(query=request.query)
         print(f"retrieved_context: {retrieved_context}")
         text_buffer = []
 
         def generate():
-            print("generate 함수 시작")
-            yield "data: 테스트 시작\n\n"
-            # 1) 먼저 무관 문구인지 확인
-            print("테스트 데이터 전송됨")
+            print(retrieved_context["answer"] == "", flush=True)
+            print("스마트 스토어에 대한 질문을 부탁드립니다." in retrieved_context["question"], flush=True)
             if (retrieved_context["answer"] == "" and
                 "스마트 스토어에 대한 질문을 부탁드립니다." in retrieved_context["question"]):
+                print("둘다 false여서 여기 진행?", flush=True)
                 # => 무관 질문, LLM 호출 없이 바로 SSE 반환
                 content = retrieved_context["question"]  # "저는 스마트 스토어 FAQ를..."
-                for content_add_answer in db_handle.generate_error_response(question=query, content=content):
+                for content_add_answer in db_handle.generate_error_response(question=request.query, content=content, user_history=user_history):
                     print(content_add_answer, flush=True)
                     text_buffer.append(content_add_answer)
                     yield f"{json.dumps({'content_add_answer':content_add_answer})}"
@@ -58,12 +69,14 @@ async def search_faq(query: str):
 
                 yield f"data: {json.dumps({'final:':final_text})}\n\n"
                 yield "data: [DONE]\n\n"
-                result = f"""유저 : {query}\n챗봇 : {final_text}"""
-                print(result)
+                result = f"""유저 : {request.query}\n챗봇 : {final_text}"""
+                history.add_message(request.user_id, "assistant", final_text)
+                print(history, flush=True)
+                print(result, flush=True)
                 return result
 
             # 2) 정상 FAQ라면 generate_response 호출
-            for content in db_handle.generate_response(query=query, retrieved_context=retrieved_context):
+            for content in db_handle.generate_response(query=request.query, retrieved_context=retrieved_context, user_history=user_history):
                 text_buffer.append(content)
                 print(content, flush=True)
                 yield f"data: {json.dumps({'content': content})}\n\n"
@@ -74,8 +87,9 @@ async def search_faq(query: str):
             yield f"data: {json.dumps({'final': final_text})}\n\n"
             yield "data: [DONE]\n\n"
             print("generate normal 함수 종료")
-            result = f"""유저 : {query}\n챗봇 : {final_text}"""
-            print(result)
+            result = f"""유저 : {request.query}\n챗봇 : {final_text}"""
+            history.add_message(request.user_id, "assistant", final_text)
+            print(result, flush=True)
             return result
 
         print("StreamingResponse 반환 직전")
@@ -83,7 +97,9 @@ async def search_faq(query: str):
 
     except Exception as e:
         print(f"search_faq 오류: {str(e)}")
-        return "search_faq 오류: {str(e)}"
+        return e
+    
+# ==================================== stream 구현 함수 테스트 ============================================== #    
 # import os, re, json
 # import asyncio
 # import sys
