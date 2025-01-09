@@ -1,5 +1,7 @@
-api/__pycache__/main.cpython-39.pyc
-api/embedding/__pycache__/__init__.cpython-39.pyc
-api/embedding/__pycache__/openai_embedding.cpython-39.pyc
-api/milvus/__pycache__/__init__.cpython-39.pyc
-api/milvus/__pycache__/FAQ_search.cpython-39.pyc
+*.pyc
+*.sst
+*.log
+volumes/*
+/volumes
+volumes
+/volumes/*

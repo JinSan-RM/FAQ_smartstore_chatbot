@@ -33,3 +33,55 @@
     가급적 OpenAI 를 추천
     - `Pinecone` 과 같은 SaaS 보다는 [Milvus](https://github.com/milvus-io/milvus) 혹은 [Chroma](https://github.com/chroma-core/chroma) 등의 로컬 기반 오픈소스를 사용
     - **LangChain, Llama Index 와 같은 LLM 오케스트레이션 프레임워크는 사용하지 금지!**
+
+docker desktop을 설치
+
+prompt창 열기
+
+명령어 입력
+docker compose build --no-cache --progress=plain
+
+docker compose up
+(최초의 milvus 실행시간이 소요될 수 있습니다.)
+
+
+postman 호출 or curl 통신 방식으로 진행. 
+
+curl -X POST http://localhost:8001/openai_faq
+- vectorDB에 schema 및 field 생성 후 data embedding -> insert
+##### ※전체 데이터 입력부분이라 시간이 조금 걸립니다.
+
+- curl 호출 방식.
+echo '{"query":"스마트스토어에서 취급 불가한 상품이 있나요?","user_id":"test"}' > data.json
+curl -X POST http://localhost:8001/openai_faq_search   -H "Content-Type: application/json"   --data @data.json
+    ```jsx
+
+    최초 질문
+
+    유저 : 스마트스토어에서 취급 불가한 상품이 있나요?
+    챗봇 : 챗봇 : 스마트스토어에서 취급 불가한 상품은 여러 가지가 있습니다. 성인용품(콘돔, 성기구류, 러브젤 등), 성인용 DVD/블루레이/중고도서/음반/공연티켓, 대여 보증금을 받는 상품, 개인정보 수집이 포함된 상품, 의약품, 주류 및 담배, 마약류, 헌혈증서, 음란물, 시력보정용 안경 및 콘택트렌즈(미용렌즈 포함), 야생 동식물, 군복 및 군용장구, 총포·도검·화약류 등 관련 법령에 의해 인터넷 거래가 불가한 상품들이 포함됩니다. 휴대폰 개통을 필요로 하는 상품, 후원금/기부금 형태의 상품, 자동차 매매와 같은 특정 카테고리의 상품도 취급이 불가합니다. 스마트스토어에서의 판매가 제한되는 경우에는 네이버쇼핑의 가이드라인에 따라야 합니다.
+
+    - 스마트스토어에서의 상품 등록 정책은 어떻게 되나요?
+    - 스마트스토어 이용 시 주의해야 할 거래 정책은 무엇인가요?
+    echo '{"query":"스마트스토어에서의 상품 등록 정책은 어떻게 되나요?","user_id":"test"}' > data.json
+    curl -X POST http://localhost:8001/openai_faq_search   -H "Content-Type: application/json"   --data @data.json
+
+    후속 질문
+
+    유저 : 스마트스토어에서의 상품 등록 정책은 어떻게 되나요?
+    챗봇 : 상품 등록 시 스마트스토어에서 판매할 수 없는 취급 불가 상품은 성인용품, 성인물, 의약품, 주류, 담배 등이 있으며, 이러한 상품들은 관련 법령에 의해 온라인 거래가 불가합니다. 특정 이미지나 성인기준 위반 여부에 따라 섹시 란제리가 취급 불가 상품에 포함될 수 있으며, 대여상품의 경우도 제한이 있으므로 "안전거래 가이드"를 참고하시기 바랍니다.
+
+    - 스마트스토어의 수수료 정책은 어떻게 되나요? 
+    - 스마트스토어 판매자 가입 절차는 어떻게 되나요?
+    ```
+
+echo '{"query":"합정역 맛집에 대해서 알려줘","user_id":"test"}' > data.json
+curl -X POST http://localhost:8001/openai_faq_search   -H "Content-Type: application/json"   --data @data.json
+    ```jsx
+
+    잘못된 입력 시 
+    
+    유저 : 합정역 맛집에 대해서 알려줘                 
+    챗봇 : 저는 스마트 스토어 FAQ를 위한 챗봇입니다. 스마트 스토어에 대한 질문을 부탁드립니다.  
+    - 음식도 스토어 등록이 가능한지 궁금하신가요?   
+    ```

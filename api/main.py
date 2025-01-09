@@ -1,27 +1,69 @@
-from embedding.openai_embedding import DataHandle
-from milvus.FAQ_RAG import DBHandling
+from embedding.openai_embedding import MilvusHandle
+from service.faq_response_handle import DataHandle, ResponseHandle
 from context.context import ChatContext
 #==============================================
 
-from openai import OpenAI
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import pandas as pd
-import json
 from collections import defaultdict, deque
 
+# FastAPI app 생성
 app = FastAPI()
 
 # 전역변수로 사용자별 히스토리 저장, 느림
 # 앱 새로 시작하면 초기화.
 # 10개 까지만 저장.
-
 history_store = defaultdict(lambda: deque(maxlen=10))
+    
+# pydantic형식을 사용해서 입력값 체크
+class FAQRequest(BaseModel):
+    query: str
+    user_id: str
 
+@app.post('/openai_faq_search')
+async def search_faq(request: FAQRequest):
+    print(f"질문 : {request.query} || 유저 : {request.user_id}")
+    try:
+        # 유저의 이전 질문과 상황을 저장하고 히스토리 맥락을 유지
+        history = ChatContext(history_store)
+        print(f"히스토리 : {history_store[{request.user_id}]}")
+        user_history = history.get_user_history(request.user_id)
+        history.add_message(request.user_id, "user", request.query)
+        
+        #
+        db_handle = DataHandle()
+        retrieved_context = db_handle.search_FAQ(query=request.query)
+        print(f"retrieved_context: {retrieved_context}")
+
+        def generate():
+            # 데이터 생성 모듈 호출출 
+            response = ResponseHandle()
+            # 스마트 스토어에 대한 응답인지 아닌지 확인.
+            if (retrieved_context["answer"] == "" and
+                "스마트 스토어에 대한 질문을 부탁드립니다." in retrieved_context["question"]):
+                yield from response.handle_error_response(db_handle, request, retrieved_context, user_history, history)
+                
+                return
+            else:
+                yield from response.handle_normal_response(db_handle, request, retrieved_context, user_history, history)
+            
+                return
+
+        return StreamingResponse(generate(), media_type='text/event-stream')
+
+    except Exception as e:
+        print(f"search_faq 오류: {str(e)}")
+        return e
+
+# yield from 을 하면 생성함수로부터 모든 값들이 자동으로 yield를 하게됨. 몰랐던 부분.
+    
+    
+# RAG 테스트 호출
 @app.post('/openai_faq_test')
 def test_RAG_faq(question: str):
-    data_handle = DataHandle()
+    data_handle = MilvusHandle()
     answer = data_handle.search_similar_question(question)
     return {"question": question, "answer": answer}
 
@@ -29,8 +71,9 @@ def test_RAG_faq(question: str):
 @app.post('/openai_faq')
 def insert_faq():
     try:
+        # docker 데이터가 있는 경로.
         faq_data = '/app/api/utils/preprocess_final_data.pkl'
-        data_handle = DataHandle()
+        data_handle = MilvusHandle()
         
         df = pd.read_pickle(faq_data)
         print(f"df : {df}")
@@ -39,71 +82,22 @@ def insert_faq():
     except Exception as e:
         print(f"Error occurred: {e}")
         return f"Error: {e}"
-class FAQRequest(BaseModel):
-    query: str
-    user_id: str
     
-history_store = defaultdict(lambda: deque(maxlen=10))
-
-@app.post('/openai_faq_search')
-async def search_faq(request: FAQRequest):
-    print(f"Request received: {request}")
-    try:
-        history = ChatContext(history_store)
-        print(f"history_store : {history_store['test']}")
-        user_history = history.get_user_history(request.user_id)
-        history.add_message(request.user_id, "user", request.query)
-        print("search_faq 시작")
-        db_handle = DBHandling()
-        retrieved_context = db_handle.search_FAQ(query=request.query)
-        print(f"retrieved_context: {retrieved_context}")
-        text_buffer = []
-
-        def generate():
-            print(retrieved_context["answer"] == "", flush=True)
-            print("스마트 스토어에 대한 질문을 부탁드립니다." in retrieved_context["question"], flush=True)
-            if (retrieved_context["answer"] == "" and
-                "스마트 스토어에 대한 질문을 부탁드립니다." in retrieved_context["question"]):
-                print("둘다 false여서 여기 진행?", flush=True)
-                # => 무관 질문, LLM 호출 없이 바로 SSE 반환
-                content = retrieved_context["question"]  # "저는 스마트 스토어 FAQ를..."
-                for content_add_answer in db_handle.generate_error_response(question=request.query, content=content, user_history=user_history):
-                    print(content_add_answer, flush=True)
-                    text_buffer.append(content_add_answer)
-                    yield f"data: {content_add_answer}\n\n"
-                final_text = ''.join(text_buffer)
-
-                # yield f"data: {final_text}\n\n"
-                result = f"""유저 : {request.query}\n챗봇 : {final_text}"""
-                history.add_message(request.user_id, "assistant", final_text)
-                # print(history, flush=True)
-                print(result, flush=True)
-                yield f"{result}\n\n"
-                yield "data: [DONE]\n\n"
-                return result
-
-            # 2) 정상 FAQ라면 generate_response 호출
-            for content in db_handle.generate_response(query=request.query, retrieved_context=retrieved_context, user_history=user_history):
-                text_buffer.append(content)
-                print(content, flush=True)
-                yield f"data: {content}\n\n"
-                
-            # 3) SSE 마지막에 합친 텍스트 전송
-            final_text = ''.join(text_buffer)
-            yield "data: [DONE]\n\n"
-            print("generate normal 함수 종료")
-            result = f"""유저 : {request.query}\n챗봇 : {final_text}"""
-            history.add_message(request.user_id, "assistant", final_text)
-            print(result, flush=True)
-            yield f"{result}\n\n"
-            return result
-
-        print("StreamingResponse 반환 직전")
-        return StreamingResponse(generate(), media_type='text/event-stream')
-
-    except Exception as e:
-        print(f"search_faq 오류: {str(e)}")
-        return e
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
 # ==================================== stream 구현 함수 테스트 ============================================== #    
 # import os, re, json
@@ -114,7 +108,7 @@ async def search_faq(request: FAQRequest):
 # client = OpenAI(api_key=OPENAI_KEY)
 # @app.post("/stream")
 # async def stream_response(query: str):
-#     db_handle = DBHandling()
+#     db_handle = DataHandle()
 #     retrieved_context = db_handle.search_FAQ(query=query)
 #     # print(f"retrieved_context: {retrieved_context}")
 #     prompt = f"""다음은 네이버 스마트스토어 FAQ 내용입니다:
