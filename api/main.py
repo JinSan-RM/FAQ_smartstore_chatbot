@@ -16,6 +16,7 @@ app = FastAPI()
 # 전역변수로 사용자별 히스토리 저장, 느림
 # 앱 새로 시작하면 초기화.
 # 10개 까지만 저장.
+
 history_store = defaultdict(lambda: deque(maxlen=10))
 
 @app.post('/openai_faq_test')
@@ -27,12 +28,17 @@ def test_RAG_faq(question: str):
 #데이터 삽입 테스트
 @app.post('/openai_faq')
 def insert_faq():
-    faq_data = '/app/api/utils/preprocess_final_data.pkl'
-    data_handle= DataHandle()
-    
-    df = pd.read_pickle(faq_data)
-    data_handle.insert_FAQ(df)
-    return "sucess"
+    try:
+        faq_data = '/app/api/utils/preprocess_final_data.pkl'
+        data_handle = DataHandle()
+        
+        df = pd.read_pickle(faq_data)
+        print(f"df : {df}")
+        data_handle.insert_FAQ(df)
+        return "success"
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        return f"Error: {e}"
 class FAQRequest(BaseModel):
     query: str
     user_id: str
@@ -64,32 +70,32 @@ async def search_faq(request: FAQRequest):
                 for content_add_answer in db_handle.generate_error_response(question=request.query, content=content, user_history=user_history):
                     print(content_add_answer, flush=True)
                     text_buffer.append(content_add_answer)
-                    yield f"{json.dumps({'content_add_answer':content_add_answer})}"
+                    yield f"data: {content_add_answer}\n\n"
                 final_text = ''.join(text_buffer)
 
-                yield f"data: {json.dumps({'final:':final_text})}\n\n"
-                yield "data: [DONE]\n\n"
+                # yield f"data: {final_text}\n\n"
                 result = f"""유저 : {request.query}\n챗봇 : {final_text}"""
                 history.add_message(request.user_id, "assistant", final_text)
-                print(history, flush=True)
+                # print(history, flush=True)
                 print(result, flush=True)
+                yield f"{result}\n\n"
+                yield "data: [DONE]\n\n"
                 return result
 
             # 2) 정상 FAQ라면 generate_response 호출
             for content in db_handle.generate_response(query=request.query, retrieved_context=retrieved_context, user_history=user_history):
                 text_buffer.append(content)
                 print(content, flush=True)
-                yield f"data: {json.dumps({'content': content})}\n\n"
+                yield f"data: {content}\n\n"
                 
             # 3) SSE 마지막에 합친 텍스트 전송
             final_text = ''.join(text_buffer)
-            print(final_text, flush=True)
-            yield f"data: {json.dumps({'final': final_text})}\n\n"
             yield "data: [DONE]\n\n"
             print("generate normal 함수 종료")
             result = f"""유저 : {request.query}\n챗봇 : {final_text}"""
             history.add_message(request.user_id, "assistant", final_text)
             print(result, flush=True)
+            yield f"{result}\n\n"
             return result
 
         print("StreamingResponse 반환 직전")

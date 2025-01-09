@@ -15,10 +15,10 @@ class DataHandle:
         
         connections.connect(host='milvus', port='19530') 
         
-        # if utility.has_collection("faq"):
-        #     collection = Collection("faq")
-        #     collection.drop()
-        #     print("이미 있지만 다시 지웠다가 생성.")
+        if utility.has_collection("faq"):
+            collection = Collection("faq")
+            collection.drop()
+            print("이미 있지만 다시 지웠다가 생성.")
             
         self.dim = 1536
         
@@ -72,7 +72,7 @@ class DataHandle:
             print("번호 못 찾음.")
     
     def text_embedding(self, question: str):
-        print(f"임베딩 생성할 질문: {question}")
+        print(f"임베딩 생성 질문: {question}")
         response = client.embeddings.create(
             input=question,
             model="text-embedding-3-small"
@@ -118,6 +118,7 @@ class DataHandle:
 
     
     def insert_FAQ(self, faq_data):
+        print("start insert", flush=True)
         MAX_LENGTH = 60000
         processed_data = []
         
@@ -173,7 +174,7 @@ class DataHandle:
                 
             except Exception as e:
                 print(f"배치 삽입 중 에러: {e}")
-            
+                
     def search_similar_question(self, user_question: str, top_k: int = 1):
         user_embedding = self.text_embedding(user_question)
         
