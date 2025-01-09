@@ -2,18 +2,21 @@ docker desktop을 설치
 
 git bash 열기 (encoding)
 
+git clone https://github.com/JinSan-RM/FAQ_smartstore_chatbot
+
 명령어 입력
 docker compose build --no-cache --progress=plain
 
 docker compose up
 (최초의 milvus 실행시간이 소요될 수 있습니다.)
 
+openai_api_key docker-compose.yml의 service > chatbot > environment > OPENAI_API_KEY= 여기에 입력
 
 postman 호출 or curl 통신 방식으로 진행. 
 
 curl -X POST http://localhost:8001/openai_faq
 - vectorDB에 schema 및 field 생성 후 data embedding -> insert
-##### ※전체 데이터 입력부분이라 시간이 조금 걸립니다.
+##### ※전체 데이터 입력부분이라 시간이 조금 걸립니다. 프린트 찍어놔서 임베딩되어 입력되는거 실시간 확인 가능.
 
 - curl 호출 방식.
 echo '{"query":"스마트스토어에서 취급 불가한 상품이 있나요?","user_id":"test"}' > data.json
