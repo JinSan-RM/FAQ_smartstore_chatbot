@@ -16,6 +16,7 @@ curl -X POST http://localhost:8001/openai_faq
 ##### ※전체 데이터 입력부분이라 시간이 조금 걸립니다.
 
 - curl 호출 방식.
+  
 echo '{"query":"스마트스토어에서 취급 불가한 상품이 있나요?","user_id":"test"}' > data.json
 
 curl -X POST http://localhost:8001/openai_faq_search   -H "Content-Type: application/json"   --data @data.json
@@ -28,6 +29,7 @@ curl -X POST http://localhost:8001/openai_faq_search   -H "Content-Type: applica
 
     - 스마트스토어에서의 상품 등록 정책은 어떻게 되나요?
     - 스마트스토어 이용 시 주의해야 할 거래 정책은 무엇인가요?
+    
     echo '{"query":"스마트스토어에서의 상품 등록 정책은 어떻게 되나요?","user_id":"test"}' > data.json
     
     curl -X POST http://localhost:8001/openai_faq_search   -H "Content-Type: application/json"   --data @data.json
