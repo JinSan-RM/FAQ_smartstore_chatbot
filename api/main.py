@@ -28,11 +28,11 @@ async def search_faq(request: FAQRequest):
     try:
         # 유저의 이전 질문과 상황을 저장하고 히스토리 맥락을 유지
         history = ChatContext(history_store)
-        print(f"히스토리 : {history_store[{request.user_id}]}")
+        print(f"히스토리 : {history_store}")
         user_history = history.get_user_history(request.user_id)
         history.add_message(request.user_id, "user", request.query)
         
-        #
+        # RAG 실행.
         db_handle = DataHandle()
         retrieved_context = db_handle.search_FAQ(query=request.query)
         print(f"retrieved_context: {retrieved_context}")
@@ -41,13 +41,15 @@ async def search_faq(request: FAQRequest):
             # 데이터 생성 모듈 호출출 
             response = ResponseHandle()
             # 스마트 스토어에 대한 응답인지 아닌지 확인.
+            # 부정 응답시 분기
             if (retrieved_context["answer"] == "" and
                 "스마트 스토어에 대한 질문을 부탁드립니다." in retrieved_context["question"]):
-                yield from response.handle_error_response(db_handle, request, retrieved_context, user_history, history)
+                yield from response.handle_error_response( request, retrieved_context, history )
                 
                 return
+            # 정상 응답시 분기
             else:
-                yield from response.handle_normal_response(db_handle, request, retrieved_context, user_history, history)
+                yield from response.handle_normal_response( request, retrieved_context, user_history, history )
             
                 return
 
